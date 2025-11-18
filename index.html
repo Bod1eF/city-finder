@@ -54,7 +54,7 @@
     .attr("d", path);
 
   // Load your merged CBSA GeoJSON
-  const cbsa = await d3.json("cbsa_commute.geojson"); // adjust filename if different
+  const cbsa = await d3.json("cbsa_final.geojson");
 
   // Helper to compute a safe pixel centroid for a feature.
   // Returns [x,y] in SVG pixel coordinates, or null if can't compute.
@@ -133,7 +133,8 @@
                     Bike: ${p.bike_percent ?? "N/A"}%<br/>
                     Walk: ${p.walk_percent ?? "N/A"}%<br/>
                     Drive: ${p.car_percent ?? "N/A"}%<br/>
-                    WFH: ${p.wfh_percent ?? "N/A"}%`;
+                    WFH: ${p.wfh_percent ?? "N/A"}%
+                    Population: ${p.population ?? "N/A"}`
       tooltip.html(html).style("display", "block");
     })
     .on("mousemove", function(event) {

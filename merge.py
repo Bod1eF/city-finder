@@ -1,34 +1,38 @@
 import pandas as pd
 import geopandas as gpd
 
-# ----------------------------------------------
-# 1. Load your commute CSV
-# ----------------------------------------------
-csv_path = "commute_mode.csv"  # rename to your actual file
-df = pd.read_csv(csv_path)
+commute_path = "commute_mode.csv"
+census_path  = "merged_msa.csv"
 
-# Clean column name for merge
-df["CBSAFP"] = df["metropolitan statistical area/micropolitan statistical area"].astype(str).str.zfill(5)
+df_commute = pd.read_csv(commute_path)
+df_census  = pd.read_csv(census_path)
 
-# ----------------------------------------------
-# 2. Load the CBSA shapefile
-# ----------------------------------------------
-shp_path = "cbsa_shp/cb_2023_us_cbsa_500k.shp"  # adjust path if needed
-cbsa = gpd.read_file(shp_path)
+df_commute["CBSAFP"] = (
+    df_commute["metropolitan statistical area/micropolitan statistical area"]
+    .astype(str).str.zfill(5)
+)
 
-# GEOID field in the shapefile is CBSAFP
+df_census["CBSAFP"] = (
+    df_census["metropolitan statistical area/micropolitan statistical area"]
+    .astype(str).str.zfill(5)
+)
+
+merged_csv = df_commute.merge(df_census, on="CBSAFP", how="inner")
+
+print("Rows after merging commute + census:", len(merged_csv))
+
+merged_csv_path = "commute_plus_census.csv"
+merged_csv.to_csv(merged_csv_path, index=False)
+print("Saved:", merged_csv_path)
+
+cbsa_shp = "cbsa_shp/cb_2023_us_cbsa_500k.shp"
+cbsa = gpd.read_file(cbsa_shp)
+
 cbsa["CBSAFP"] = cbsa["CBSAFP"].astype(str).str.zfill(5)
 
-# ----------------------------------------------
-# 3. Merge commute data with geometry
-# ----------------------------------------------
-merged = cbsa.merge(df, on="CBSAFP", how="inner")
+final_geo = cbsa.merge(merged_csv, on="CBSAFP", how="inner")
 
-print("Merged rows:", len(merged))
+print("Final rows with geometry:", len(final_geo))
 
-# ----------------------------------------------
-# 4. Export GeoJSON for D3
-# ----------------------------------------------
-merged.to_file("cbsa_commute.geojson", driver="GeoJSON")
-
-print("GeoJSON created: cbsa_commute.geojson")
+final_geo.to_file("cbsa_final.geojson", driver="GeoJSON")
+print("Created GeoJSON: cbsa_final.geojson")

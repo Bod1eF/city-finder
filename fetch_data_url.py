@@ -1,3 +1,6 @@
+import requests
+import csv
+
 summary = {
     "population": "B01003_001E",
     "median_income": "B19013_001E",
@@ -84,10 +87,11 @@ demographics = {
     "two_plus": "B02001_008E",
 }
 
+field_list = [summary, rent_burden, mortgage_burden, employment, education]
+
 base_url = "https://api.census.gov/data/2023/acs/acs5"
 
-codes = ",".join(summary.values())
-
-url = f"{base_url}?get=NAME,{codes}&for=metropolitan%20statistical%20area/micropolitan%20statistical%20area:*"
-
-print(url)
+for field_set in field_list:
+    codes = ",".join(field_set.values())
+    url = f"{base_url}?get=NAME,{codes}&for=metropolitan%20statistical%20area/micropolitan%20statistical%20area:*"
+    print(url)
