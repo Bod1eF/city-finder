@@ -123,6 +123,21 @@
       .attr("cx", d => d.x)
       .attr("cy", d => d.y)
       .attr("r", 0)
+      .on("mouseover", (event, d) => {
+        tooltip.style("display", "block")
+          .html(
+            `<strong>${d.feature.properties.NAME || "Unnamed"}</strong><br/>` +
+            `Pop: ${d.population?.toLocaleString() || "N/A"}`
+          );
+      })
+      .on("mousemove", (event) => {
+        tooltip
+          .style("left", (event.pageX + 12) + "px")
+          .style("top", (event.pageY + 12) + "px");
+      })
+      .on("mouseout", () => {
+        tooltip.style("display", "none");
+      })
       .on("click", (event, d) => {
         event.stopPropagation();
         dotsG.selectAll("circle").classed("selected", false);
@@ -130,12 +145,12 @@
         showTabContent("overview", d);
       });
 
-    enter.merge(sel)
-      .attr("cx", d => d.x)
-      .attr("cy", d => d.y)
-      .transition().duration(350)
-      .attr("r", d => Math.max(3, rScale(d.population)));
-  }
+      enter.merge(sel)
+        .attr("cx", d => d.x)
+        .attr("cy", d => d.y)
+        .transition().duration(350)
+        .attr("r", d => Math.max(3, rScale(d.population)));
+    }
 
   // render Overview tab (bars + small raw numbers)
   function renderOverview(p) {
@@ -231,7 +246,6 @@
     sidebar.append("h3").text("Population: " + (p.population?.toLocaleString() || "N/A"));
     const chartHolder = sidebar.append("div").attr("class", "chart-holder");
     const tenure = tenureSelect.node().value;
-    sidebar.append("h3").text((tenure === "buy" ? "Mortgage burden bins" : "Rent burden bins"));
 
     if (tenure === "buy") {
       const total = p.mortgage_total || 0;
