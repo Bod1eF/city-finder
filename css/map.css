@@ -9,8 +9,8 @@
 
   /* sidebar */
   #sidebar {
-    width: 500px;
-    flex: 0 0 500px;
+    width: 600px;
+    flex: 0 0 600px;
     border-left: 1px solid #eee;
     padding-left: 16px;
     box-sizing: border-box;

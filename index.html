@@ -69,6 +69,18 @@
     .attr("d", path).attr("fill", "none").attr("stroke", "rgba(0,0,0,0.06)").attr("stroke-width", 0.6);
 
   const dotsG = svg.append("g").attr("class", "dots");
+  const tooltip = d3.select("body")
+    .append("div")
+    .attr("class", "dot-tooltip")
+    .style("position", "absolute")
+    .style("pointer-events", "none")
+    .style("padding", "6px 10px")
+    .style("background", "rgba(0,0,0,0.75)")
+    .style("color", "white")
+    .style("border-radius", "4px")
+    .style("font-size", "12px")
+    .style("display", "none");
+
 
   // build points via parseFeatureProps + safePixelCentroid
   const points = [];
@@ -167,7 +179,7 @@
     sidebar.html("");
     sidebar.append("h2").text(p.feature.properties.NAME || "Car freedom");
     sidebar.append("h3").text("Population: " + (p.population ? p.population.toLocaleString() : "N/A"));
-
+    const chartHolder = sidebar.append("div").attr("class", "chart-holder");
     const cats = [
       { label: "Transit", value: +(p.transit || 0), unit: "%" },
       { label: "Bike", value: +(p.bike || 0), unit: "%" },
@@ -175,9 +187,11 @@
       { label: "WFH", value: +(p.wfh || 0), unit: "%" },
       { label: "Car", value: +(p.car || 0), unit: "%" }
     ];
-
-    const colors = [commuteColors.transit, commuteColors.bike, commuteColors.walk, commuteColors.wfh, commuteColors.car];
-    drawBarChart(sidebar, cats, colors);
+    const colors = [commuteColors.transit, commuteColors.bike, commuteColors.walk, commuteColors.wfh, commuteColors.car]
+    drawBarChart(chartHolder , cats, colors, {
+      title: "Commute Mode Distribution (%)",
+      xLabel: "Commute Type",
+    });
   }
 
   // Education tab - categories as requested
@@ -185,7 +199,7 @@
     sidebar.html("");
     sidebar.append("h2").text(p.feature.properties.NAME || "Education");
     sidebar.append("h3").text("Population 25+: " + (p.edu_total ? p.edu_total.toLocaleString() : "N/A"));
-
+    const chartHolder = sidebar.append("div").attr("class", "chart-holder");
     // compute percentage for each category (safe fallback if counts missing)
     const total = p.edu_total || 0;
     const lessThanHs = total ? ((p.edu_no_school || 0) + (p.edu_12_no || 0)) / total * 100 : 0;
@@ -204,13 +218,18 @@
       { label: "Advanced", value: advanced, unit: "%" }
     ];
     const colors = [educationColors.less_than_hs, educationColors.hs, educationColors.some_college, educationColors.bachelors, educationColors.masters, educationColors.advanced];
-    drawBarChart(sidebar, cats, colors);
+    drawBarChart(chartHolder , cats, colors, {
+      title: "Education Distribution for Adults 25+ (%)",
+      xLabel: "Educational Attainment Category",
+    });
   }
 
   // Affordability tab - rent or mortgage bins
   function renderAffordTab(p) {
     sidebar.html("");
-    sidebar.append("h2").text(p.feature.properties.NAME || "Affordability");
+    sidebar.append("h2").text(p.feature.properties.NAME || "Unknown");
+    sidebar.append("h3").text("Population: " + (p.population?.toLocaleString() || "N/A"));
+    const chartHolder = sidebar.append("div").attr("class", "chart-holder");
     const tenure = tenureSelect.node().value;
     sidebar.append("h3").text((tenure === "buy" ? "Mortgage burden bins" : "Rent burden bins"));
 
@@ -219,13 +238,19 @@
       const labels = ["<10","10-14.9","15-19.9","20-24.9","25-29.9","30-34.9","35-39.9","40-49.9", "50+"];
       const values = (p.mortgage_bins && p.mortgage_bins.length) ? p.mortgage_bins.map(v => total ? v / total * 100 : 0) : Array(labels.length).fill(0);
       const cats = labels.map((lab, i) => ({ label: lab, value: +(values[i] || 0), unit: "%" }));
-      drawBarChart(sidebar, cats, burdenColors);
+      drawBarChart(sidebar, cats, burdenColors, {
+        title: "Morgate Burden Distribution (%)",
+        xLabel: "Gross morgate cost as % of Income",
+      });
     } else {
       const total = p.rent_total || 0;
       const labels = ["<10","10-14.9","15-19.9","20-24.9","25-29.9","30-34.9","35-39.9","40-49.9", "50+"];
       const values = (p.rent_bins && p.rent_bins.length) ? p.rent_bins.map(v => total ? v / total * 100 : 0) : Array(labels.length).fill(0);
       const cats = labels.map((lab, i) => ({ label: lab, value: +(values[i] || 0), unit: "%" }));
-      drawBarChart(sidebar, cats, burdenColors);
+      drawBarChart(chartHolder, cats, burdenColors, {
+        title: "Rent Burden Distribution (%)",
+        xLabel: "Gross Rent as % of Income",
+      });
     }
   }
 
