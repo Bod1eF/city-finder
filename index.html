@@ -21,9 +21,6 @@
   <input id="maxPop" type="number" value="10000000" min="0" />
 
   <button id="applyFilter" style="padding:6px 10px; border-radius:4px;">Apply filter</button>
-
-  <div style="flex:1"></div>
-  <div class="muted">Click a dot to open details</div>
 </div>
 
 <div id="container">
@@ -32,7 +29,7 @@
   </div>
 
   <div id="sidebar">
-    <div class="tabs" id="tabButtons">
+    <div class="tabs">
       <button class="tab-btn active" data-tab="overview">Overview</button>
       <button class="tab-btn" data-tab="car">Car freedom</button>
       <button class="tab-btn" data-tab="education">Education</button>
@@ -47,191 +44,44 @@
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
 
-<script>
-(async () => {
+<script type="module">
+  import { normalizedMetrics } from './utils/normalizedmetrics.js';
+  import { safePixelCentroid } from './utils/safePixelCentroid.js';
+  import { parseFeatureProps } from './utils/parseFeatureProps.js';
+  import { drawBarChart } from './utils/drawBarChart.js';
+  import { buildRadiusScale, computeNormalizationMaxs } from './utils/scales.js';
+  import { metricColors, commuteColors, educationColors, burdenColors } from './utils/colors.js';
+
+  (async () => {
   const width = 1000, height = 650;
   const svg = d3.select("#vis").append("svg").attr("width", width).attr("height", height);
-
-  // Projection and path
   const projection = d3.geoAlbersUsa().scale(1200).translate([width/2, height/2]);
   const path = d3.geoPath().projection(projection);
 
-  // Load US state topology (us-atlas) for state outlines
   const usTopo = await d3.json("https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json");
   const states = topojson.feature(usTopo, usTopo.objects.states);
-
-  svg.append("g")
-    .selectAll("path")
-    .data(states.features)
-    .join("path")
-    .attr("class", "state")
-    .attr("d", path);
+  svg.append("g").selectAll("path").data(states.features).join("path").attr("class", "state").attr("d", path);
 
   const cbsa = await d3.json("json/cbsa_final.geojson");
 
-  // Helper to compute a safe pixel centroid for a feature.
-  function safePixelCentroid(feature) {
-    try {
-      const c = path.centroid(feature);
-      if (Array.isArray(c) && isFinite(c[0]) && isFinite(c[1]) && Math.abs(c[0]) < 1e6 && Math.abs(c[1]) < 1e6) {
-        return c;
-      }
-    } catch (e) {}
+  // polygon outlines
+  svg.append("g").selectAll("path").data(cbsa.features).join("path")
+    .attr("d", path).attr("fill", "none").attr("stroke", "rgba(0,0,0,0.06)").attr("stroke-width", 0.6);
 
-    try {
-      const b = d3.geoBounds(feature);
-      if (b && b.length === 2) {
-        const lon = (b[0][0] + b[1][0]) / 2;
-        const lat = (b[0][1] + b[1][1]) / 2;
-        const p = projection([lon, lat]);
-        if (p && isFinite(p[0]) && isFinite(p[1])) return p;
-      }
-    } catch (e) {}
-
-    return null;
-  }
-
-  // Draw CBSA polygons lightly (optional)
-  svg.append("g")
-    .selectAll("path")
-    .data(cbsa.features)
-    .join("path")
-    .attr("d", path)
-    .attr("fill", "none")
-    .attr("stroke", "rgba(0,0,0,0.06)")
-    .attr("stroke-width", 0.6);
-
-  // Create group for dots
   const dotsG = svg.append("g").attr("class", "dots");
 
-  // Build points array with pixel centroids and parsed numeric properties
+  // build points via parseFeatureProps + safePixelCentroid
   const points = [];
-  let skipped = 0;
   cbsa.features.forEach(f => {
-    const pix = safePixelCentroid(f);
-    if (!pix) { skipped++; return; }
-    const p = f.properties || {};
-
-    // Basic numeric parsing with many fallbacks
-    const pop = +(p.population || p.POPULATION || p.population_estimate || 0) || 0;
-    const transit = +(p.transit_percent || p.transit || 0) || 0;
-    const bike = +(p.bike_percent || p.bike || 0) || 0;
-    const walk = +(p.walk_percent || p.walk || 0) || 0;
-    const car = +(p.car_percent || p.car || 0) || 0;
-    const wfh = +(p.wfh_percent || p.wfh || 0) || 0;
-    const bachelors_pct = +(p.bachelors_plus_percent || p.bachelors_percent || p.bachelors || 0) || 0;
-    const median_rent = +(p.median_rent || p.MEDIAN_RENT || 0) || 0;
-    const median_mortgage_burden = +(p.median_mortgage_burden || p.median_mortgage || 0) || 0;
-    const unemployment = +(p.unemployment_rate || p.unemployment || p.unemployed_rate || 0) || 0;
-
-    // Education raw counts if present (B15003 derived keys)
-    const edu_total = +(p.education_total || p.B15003_001E || 0) || 0;
-    const edu_no_school = +(p.no_schooling || p.B15003_002E || 0) || 0;
-    const edu_12_no = +(p.grade_12_no_diploma || p.B15003_016E || 0) || 0;
-    const edu_hs = +(p.high_school_diploma || p.B15003_017E || 0) || 0;
-    const edu_ged = +(p.ged_or_alternative || p.B15003_018E || 0) || 0;
-    const edu_some_college_less = +(p.some_college_less_1_year || p.B15003_019E || 0) || 0;
-    const edu_some_college_more = +(p.some_college_1_or_more_years || p.B15003_020E || 0) || 0;
-    const edu_assoc = +(p.associates_degree || p.B15003_021E || 0) || 0;
-    const edu_bach = +(p.bachelors_degree || p.B15003_022E || 0) || 0;
-    const edu_masters = +(p.masters_degree || p.B15003_023E || 0) || 0;
-    const edu_prof = +(p.professional_degree || p.B15003_024E || 0) || 0;
-    const edu_doc = +(p.doctorate_degree || p.B15003_025E || 0) || 0;
-
-    // Rent / mortgage burden bins if present (B25070/B25091 keys)
-    const rent_total = +(p.total_rent_burden || p.B25070_001E || 0) || 0;
-    const rent_bins = [
-      +(p.rent_burden_less_10 || p.B25070_002E || 0) || 0,
-      +(p.rent_burden_less_15 || p.B25070_003E || 0) || 0,
-      +(p.rent_burden_less_20 || p.B25070_004E || 0) || 0,
-      +(p.rent_burden_less_25 || p.B25070_005E || 0) || 0,
-      +(p.rent_burden_less_30 || p.B25070_006E || 0) || 0,
-      +(p.rent_burden_less_35 || p.B25070_007E || 0) || 0,
-      +(p.rent_burden_less_40 || p.B25070_008E || 0) || 0,
-      +(p.rent_burden_less_50 || p.B25070_009E || 0) || 0,
-      +(p.rent_burden_over_50 || p.B25070_010E || 0) || 0
-    ];
-
-    const mortgage_total = +(p.mortgage_total || p.B25091_002E || 0) || 0;
-    const mortgage_bins = [
-      +(p.mortgage_less_10 || p.B25091_003E || 0) || 0,
-      +(p.mortgage_10_15 || p.B25091_004E || 0) || 0,
-      +(p.mortgage_15_20 || p.B25091_005E || 0) || 0,
-      +(p.mortgage_20_25 || p.B25091_006E || 0) || 0,
-      +(p.mortgage_25_30 || p.B25091_007E || 0) || 0,
-      +(p.mortgage_30_35 || p.B25091_008E || 0) || 0,
-      +(p.mortgage_35_40 || p.B25091_009E || 0) || 0,
-      +(p.mortgage_40_50 || p.B25091_010E || 0) || 0,
-      +(p.mortgage_over_50 || p.B25091_011E || 0) || 0
-    ];
-
-    const carFreedom = (transit || 0) + (bike || 0) + (walk || 0) + (wfh || 0);
-
-    points.push({
-      feature: f,
-      x: pix[0],
-      y: pix[1],
-      population: pop,
-      transit, bike, walk, car, wfh,
-      carFreedom,
-      bachelors_pct,
-      median_rent,
-      median_mortgage_burden,
-      unemployment,
-      // education counts
-      edu_total, edu_no_school, edu_12_no, edu_hs, edu_ged, edu_some_college_less, edu_some_college_more, edu_assoc, edu_bach, edu_masters, edu_prof, edu_doc,
-      // burden bins
-      rent_total, rent_bins,
-      mortgage_total, mortgage_bins
-    });
+    const pix = safePixelCentroid(f, path, projection);
+    if (!pix) return;
+    const parsed = parseFeatureProps(f);
+    parsed.x = pix[0]; parsed.y = pix[1];
+    points.push(parsed);
   });
 
-  console.log("CBSA features total:", cbsa.features.length, "points computed:", points.length, "skipped:", skipped);
-
-  // Dot radius scale (sqrt)
-  const popExtent = d3.extent(points, d => d.population);
-  const minPop = popExtent[0] || 0;
-  const maxPop = popExtent[1] || 1;
-  const rScale = d3.scaleSqrt()
-    .domain([Math.max(1, minPop), Math.max(2, maxPop)])
-    .range([3, 22]);
-
-  // Precompute maxima for normalization
-  const maxCarFreedom = d3.max(points, d => d.carFreedom) || 100;
-  const maxEducation = d3.max(points, d => d.bachelors_pct) || 100;
-  const rentExtent = d3.extent(points, d => d.median_rent);
-  const mortgageExtent = d3.extent(points, d => d.median_mortgage_burden);
-  const unemploymentExtent = d3.extent(points, d => d.unemployment);
-
-  // Metric colors (distinct)
-  const metricColors = {
-    carFreedom: "#1f77b4",
-    education: "#2ca02c",
-    affordability: "#ff7f0e",
-    opportunity: "#9467bd"
-  };
-
-  // commute category colors
-  const commuteColors = {
-    transit: "#1f77b4",
-    bike: "#2ca02c",
-    walk: "#17becf",
-    wfh: "#8c564b",
-    car: "#d62728"
-  };
-
-  // education category colors
-  const educationColors = {
-    less_than_hs: "#d62728",
-    hs: "#ff7f0e",
-    some_college: "#bcbd22",
-    bachelors: "#2ca02c",
-    masters: "#1f77b4",
-    advanced: "#9467bd"
-  };
-
-  // affordability bin colors (use palette)
-  const burdenColors = d3.schemeTableau10.concat(d3.schemeSet3).slice(0,9);
+  const rScale = buildRadiusScale(points);
+  const normalizationMaxs = computeNormalizationMaxs(points);
 
   // UI elements
   const tenureSelect = d3.select("#tenure");
@@ -275,35 +125,11 @@
       .attr("r", d => Math.max(3, rScale(d.population)));
   }
 
-  // Normalized metrics (0..1)
-  function normalizedMetrics(p, tenure) {
-    const carFreedomNorm = (p.carFreedom || 0) / (maxCarFreedom || 1);
-    const educationNorm = (p.bachelors_pct || 0) / (maxEducation || 1);
-
-    let affRaw = (tenure === "buy") ? (p.median_mortgage_burden || 0) : (p.median_rent || 0);
-    let minA = (tenure === "buy") ? (mortgageExtent[0] || 0) : (rentExtent[0] || 0);
-    let maxA = (tenure === "buy") ? (mortgageExtent[1] || (minA + 1)) : (rentExtent[1] || (minA + 1));
-    let affNorm = 1 - ((affRaw - minA) / (maxA - minA));
-    affNorm = Math.max(0, Math.min(1, affNorm || 0));
-
-    const minU = unemploymentExtent[0] || 0;
-    const maxU = unemploymentExtent[1] || (minU + 1);
-    let oppNorm = 1 - (((p.unemployment || 0) - minU) / (maxU - minU));
-    oppNorm = Math.max(0, Math.min(1, oppNorm || 0));
-
-    return {
-      carFreedom: Math.max(0, Math.min(1, carFreedomNorm || 0)),
-      education: Math.max(0, Math.min(1, educationNorm || 0)),
-      affordability: affNorm,
-      opportunity: oppNorm
-    };
-  }
-
   // render Overview tab (bars + small raw numbers)
   function renderOverview(p) {
     sidebar.html("");
     const tenure = tenureSelect.node().value;
-    const m = normalizedMetrics(p, tenure);
+    const m = normalizedMetrics(p, tenure, normalizationMaxs);
 
     sidebar.append("h2").text(p.feature.properties.NAME || "Unnamed");
     sidebar.append("h3").text("Population: " + (p.population ? p.population.toLocaleString() : "N/A"));
@@ -327,62 +153,13 @@
     });
 
     // raw numbers
-    const raw = sidebar.append("div").style("margin-top","10px").style("font-size","12px").style("color","#444");
-    raw.append("div").text("Transit: " + (p.transit || "N/A") + "%, Bike: " + (p.bike || "N/A") + "%, Walk: " + (p.walk || "N/A") + "%, WFH: " + (p.wfh || "N/A") + "%");
-    raw.append("div").text("Car: " + (p.car || "N/A") + "%");
-    raw.append("div").text("Bachelor+ %: " + (p.bachelors_pct ? p.bachelors_pct.toFixed(1) + "%" : "N/A"));
-    raw.append("div").text("Median rent: $" + (p.median_rent ? p.median_rent.toLocaleString() : "N/A"));
-    raw.append("div").text("Median mortgage burden: " + (p.median_mortgage_burden ? p.median_mortgage_burden + "%" : "N/A"));
-    raw.append("div").text("Unemployment rate: " + (p.unemployment ? p.unemployment + "%" : "N/A"));
-  }
-
-  // small helper to draw bar chart inside sidebar for a given data array
-  function drawBarChart(containerSel, items, colors, chartWidth = 320, chartHeight = 160) {
-    containerSel.html(""); // clear
-    const margin = {top: 6, right: 6, bottom: 28, left: 8};
-    const w = chartWidth - margin.left - margin.right;
-    const h = chartHeight - margin.top - margin.bottom;
-
-    const svg = containerSel.append("svg")
-      .attr("width", chartWidth)
-      .attr("height", chartHeight)
-      .attr("class", "chart");
-
-    const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
-
-    const x = d3.scaleBand().domain(items.map(d => d.label)).range([0, w]).padding(0.15);
-    const y = d3.scaleLinear().domain([0, d3.max(items, d => d.value) || 1]).range([h, 0]);
-
-    // bars
-    g.selectAll("rect")
-      .data(items)
-      .join("rect")
-      .attr("x", d => x(d.label))
-      .attr("y", d => y(d.value))
-      .attr("width", x.bandwidth())
-      .attr("height", d => Math.max(1, h - y(d.value)))
-      .attr("fill", (d,i) => colors && colors[i] ? colors[i] : "#69b3a2");
-
-    // x labels (rotated a bit if long)
-    g.selectAll(".xlab")
-      .data(items)
-      .join("text")
-      .attr("class", "bar-label")
-      .attr("x", d => x(d.label) + x.bandwidth()/2)
-      .attr("y", h + 14)
-      .attr("text-anchor", "middle")
-      .text(d => d.label)
-      .style("font-size", "11px");
-
-    // values on top
-    g.selectAll(".val")
-      .data(items)
-      .join("text")
-      .attr("x", d => x(d.label) + x.bandwidth()/2)
-      .attr("y", d => y(d.value) - 4)
-      .attr("text-anchor", "middle")
-      .style("font-size", "11px")
-      .text(d => (Math.round(d.value * 10) / 10) + (d.unit || "%"));
+    // const raw = sidebar.append("div").style("margin-top","10px").style("font-size","12px").style("color","#444");
+    // raw.append("div").text("Transit: " + (p.transit || "N/A") + "%, Bike: " + (p.bike || "N/A") + "%, Walk: " + (p.walk || "N/A") + "%, WFH: " + (p.wfh || "N/A") + "%");
+    // raw.append("div").text("Car: " + (p.car || "N/A") + "%");
+    // raw.append("div").text("Bachelor+ %: " + (p.bachelors_pct ? p.bachelors_pct.toFixed(1) + "%" : "N/A"));
+    // raw.append("div").text("Median rent: $" + (p.median_rent ? p.median_rent.toLocaleString() : "N/A"));
+    // raw.append("div").text("Median mortgage burden: " + (p.median_mortgage_burden ? p.median_mortgage_burden + "%" : "N/A"));
+    // raw.append("div").text("Unemployment rate: " + (p.unemployment ? p.unemployment + "%" : "N/A"));
   }
 
   // Car freedom tab - breakdown per category
@@ -400,7 +177,7 @@
     ];
 
     const colors = [commuteColors.transit, commuteColors.bike, commuteColors.walk, commuteColors.wfh, commuteColors.car];
-    drawBarChart(sidebar, cats, colors, 340, 180);
+    drawBarChart(sidebar, cats, colors);
   }
 
   // Education tab - categories as requested
@@ -427,7 +204,7 @@
       { label: "Advanced", value: advanced, unit: "%" }
     ];
     const colors = [educationColors.less_than_hs, educationColors.hs, educationColors.some_college, educationColors.bachelors, educationColors.masters, educationColors.advanced];
-    drawBarChart(sidebar, cats, colors, 340, 200);
+    drawBarChart(sidebar, cats, colors);
   }
 
   // Affordability tab - rent or mortgage bins
@@ -442,13 +219,13 @@
       const labels = ["<10","10-14.9","15-19.9","20-24.9","25-29.9","30-34.9","35-39.9","40-49.9", "50+"];
       const values = (p.mortgage_bins && p.mortgage_bins.length) ? p.mortgage_bins.map(v => total ? v / total * 100 : 0) : Array(labels.length).fill(0);
       const cats = labels.map((lab, i) => ({ label: lab, value: +(values[i] || 0), unit: "%" }));
-      drawBarChart(sidebar, cats, burdenColors, 340, 200);
+      drawBarChart(sidebar, cats, burdenColors);
     } else {
       const total = p.rent_total || 0;
       const labels = ["<10","10-14.9","15-19.9","20-24.9","25-29.9","30-34.9","35-39.9","40-49.9", "50+"];
       const values = (p.rent_bins && p.rent_bins.length) ? p.rent_bins.map(v => total ? v / total * 100 : 0) : Array(labels.length).fill(0);
       const cats = labels.map((lab, i) => ({ label: lab, value: +(values[i] || 0), unit: "%" }));
-      drawBarChart(sidebar, cats, burdenColors, 340, 200);
+      drawBarChart(sidebar, cats, burdenColors);
     }
   }
 
