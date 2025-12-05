@@ -19,6 +19,24 @@
 
   <label for="maxPop">Max population</label>
   <input id="maxPop" type="number" value="10000000" min="0" />
+  
+  <label for="sizeMetric">Size Encoding</label>
+  <select id="sizeMetric">
+    <option value="population" selected>Population</option>
+    <option value="carFreedom">Car Freedom</option>
+    <option value="education">Education</option>
+    <option value="affordability">Affordability</option>
+    <option value="opportunity">Opportunity</option>
+  </select>
+
+  <label for="colorMetric">Color Encoding</label>
+  <select id="colorMetric">
+    <option value="population">Population</option>
+    <option value="carFreedom" selected>Car Freedom</option>
+    <option value="education">Education</option>
+    <option value="affordability">Affordability</option>
+    <option value="opportunity">Opportunity</option>
+  </select>
 
   <button id="applyFilter" style="padding:6px 10px; border-radius:4px;">Apply filter</button>
 </div>
@@ -102,6 +120,9 @@
   const applyBtn = d3.select("#applyFilter");
   const sidebar = d3.select("#sidebar-content");
   const tabButtons = d3.selectAll(".tab-btn");
+  const sizeMetricSelect = d3.select("#sizeMetric");
+  const colorMetricSelect = d3.select("#colorMetric");
+
 
   // set inputs defaults
   minPopInput.node().value = Math.max(0, Math.floor(minPop || 0));
@@ -123,6 +144,7 @@
       .attr("cx", d => d.x)
       .attr("cy", d => d.y)
       .attr("r", 0)
+      .style("fill", metricColors.population)
       .on("mouseover", (event, d) => {
         tooltip.style("display", "block")
           .html(
@@ -162,10 +184,10 @@
     sidebar.append("h3").text("Population: " + (p.population ? p.population.toLocaleString() : "N/A"));
 
     const metricsToShow = [
-      { key: "carFreedom", label: "Car freedom (non-car commutes)", color: metricColors.carFreedom, val: m.carFreedom },
-      { key: "education", label: "Education (Bachelor+ %)", color: metricColors.education, val: m.education },
-      { key: "affordability", label: tenure === "buy" ? "Affordability (mortgage inverted)" : "Affordability (rent inverted)", color: metricColors.affordability, val: m.affordability },
-      { key: "opportunity", label: "Opportunity (1 - unemployment rate)", color: metricColors.opportunity, val: m.opportunity }
+      { key: "carFreedom", label: "Car freedom (non-car commutes)", color: metricColors.carFreedom, val: m.carFreedom, type: "th percentile"},
+      { key: "education", label: "Education (Bachelor+ %)", color: metricColors.education, val: m.education, type: "%" },
+      { key: "affordability", label: tenure === "buy" ? "Affordability (mortgage inverted)" : "Affordability (rent inverted)", color: metricColors.affordability, val: m.affordability, type: "th percentile" },
+      { key: "opportunity", label: "Opportunity (1 - unemployment rate)", color: metricColors.opportunity, val: m.opportunity,  type: "th percentile"}
     ];
 
     metricsToShow.forEach(mt => {
@@ -176,7 +198,7 @@
         .attr("class", "metric-bar-inner")
         .style("background-color", mt.color)
         .style("width", Math.round(mt.val * 100) + "%");
-      cont.append("div").attr("class", "metric-value").text(Math.round(mt.val * 100) + "%");
+      cont.append("div").attr("class", "metric-value").text(Math.round(mt.val * 100) + mt.type);
     });
 
     // raw numbers

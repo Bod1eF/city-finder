@@ -1,8 +1,9 @@
 export const metricColors = {
-  carFreedom: "#1f77b4",
-  education: "#2ca02c",
-  affordability: "#ff7f0e",
-  opportunity: "#9467bd"
+  population:   "#4e79a7",
+  carFreedom:   "#f28e2b",
+  education:    "#e15759",
+  affordability:"#76b7b2",
+  opportunity:  "#59a14f"
 };
 
 export const commuteColors = {
