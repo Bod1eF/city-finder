@@ -7,19 +7,22 @@
 </head>
 <body>
 
-<div id="controls">
-  <label for="tenure">Looking to:</label>
-  <select id="tenure">
-    <option value="rent">Rent</option>
-    <option value="buy">Buy (mortgage)</option>
-  </select>
-
+<div class="controls">
   <label for="minPop">Min population</label>
   <input id="minPop" type="number" value="50000" min="0" />
 
   <label for="maxPop">Max population</label>
   <input id="maxPop" type="number" value="10000000" min="0" />
   
+  <button id="applyFilter" style="padding:6px 10px; border-radius:4px;">Apply filter</button>
+</div> 
+<div class="controls">
+  <label for="tenure">Looking to:</label>
+  <select id="tenure">
+    <option value="rent">Rent</option>
+    <option value="buy">Buy (mortgage)</option>
+  </select>
+
   <label for="sizeMetric">Size Encoding</label>
   <select id="sizeMetric">
     <option value="population" selected>Population</option>
@@ -37,8 +40,6 @@
     <option value="affordability">Affordability</option>
     <option value="opportunity">Opportunity</option>
   </select>
-
-  <button id="applyFilter" style="padding:6px 10px; border-radius:4px;">Apply filter</button>
 </div>
 
 <div id="container">
@@ -63,12 +64,13 @@
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
 
 <script type="module">
+  import { computeNormalizationMaxsFromFeatures } from './utils/computeNormalizationMaxsFromFeatures.js';
   import { normalizedMetrics } from './utils/normalizedmetrics.js';
   import { safePixelCentroid } from './utils/safePixelCentroid.js';
   import { parseFeatureProps } from './utils/parseFeatureProps.js';
   import { drawBarChart } from './utils/drawBarChart.js';
-  import { buildRadiusScale, computeNormalizationMaxs } from './utils/scales.js';
-  import { metricColors, commuteColors, educationColors, burdenColors } from './utils/colors.js';
+  import { computeNormalizationMaxs, buildRadiusScale, makeMonoColorScale } from './utils/scales.js';
+  import { metricColors } from './utils/colors.js';
 
   (async () => {
   const width = 1000, height = 650;
@@ -99,20 +101,6 @@
     .style("font-size", "12px")
     .style("display", "none");
 
-
-  // build points via parseFeatureProps + safePixelCentroid
-  const points = [];
-  cbsa.features.forEach(f => {
-    const pix = safePixelCentroid(f, path, projection);
-    if (!pix) return;
-    const parsed = parseFeatureProps(f);
-    parsed.x = pix[0]; parsed.y = pix[1];
-    points.push(parsed);
-  });
-
-  const rScale = buildRadiusScale(points);
-  const normalizationMaxs = computeNormalizationMaxs(points);
-
   // UI elements
   const tenureSelect = d3.select("#tenure");
   const minPopInput = d3.select("#minPop");
@@ -123,19 +111,54 @@
   const sizeMetricSelect = d3.select("#sizeMetric");
   const colorMetricSelect = d3.select("#colorMetric");
 
+  colorMetricSelect.on("change", updateDots);
+  sizeMetricSelect.on("change", updateDots);
 
-  // set inputs defaults
   minPopInput.node().value = Math.max(0, Math.floor(minPop || 0));
   maxPopInput.node().value = Math.max(0, Math.ceil(maxPop || 10000000));
 
-  // Draw initial dots
+    // build points via parseFeatureProps + safePixelCentroid
+  const normMaxs = computeNormalizationMaxsFromFeatures(cbsa.features);
+  const points = cbsa.features.map(f => {
+    const pix = safePixelCentroid(f, path, projection);
+    if (!pix) return null;
+    const parsed = parseFeatureProps(f, normMaxs, tenureSelect.node().value || 'rent');
+    parsed.x = pix[0];
+    parsed.y = pix[1];
+    return parsed;
+  }).filter(Boolean);
+
   function updateDots() {
     const minP = +minPopInput.node().value || 0;
     const maxP = +maxPopInput.node().value || Infinity;
+
+    // chosen encodings
+    const sizeMetric = sizeMetricSelect.node().value;  // e.g., "population" or "education"
+    const colorMetric = colorMetricSelect.node().value; // e.g., "carFreedom"
+
+    // filter by population
     const shown = points.filter(d => d.population >= minP && d.population <= maxP);
 
+    // radius scale: you may want dynamic scale when sizeMetric != 'population'
+    // rebuild rScale using the current size metric to keep sizes meaningful
+    const rScaleLocal = buildRadiusScale(shown, sizeMetric, 3, 22);
+
+    // color domain from shown values; default to [0,1] if normalized
+    const colorVals = shown.map(d => +d[colorMetric]).filter(v => !isNaN(v));
+    let cMin = d3.min(colorVals); let cMax = d3.max(colorVals);
+    if (cMin == null || cMax == null) { cMin = 0; cMax = 1; }
+    // clamp for percent metrics in 0..1 (our normalized metrics are 0..1)
+    if (cMax <= 1 && cMin >= 0) { cMin = 0; cMax = 1; }
+
+    // base hue for metric
+    const baseColor = metricColors[colorMetric] ?? "#777";
+
+    // quantitative mono color scale
+    const colorScale = makeMonoColorScale(baseColor, [cMin, cMax]);
+
+    // join
     const sel = dotsG.selectAll("circle.cbsa-dot")
-      .data(shown, d => (d.feature.properties && (d.feature.properties.CBSAFP || d.feature.properties.GEOID || d.feature.properties.NAME)));
+      .data(shown, d => d.feature.properties?.CBSAFP || d.feature.properties?.GEOID || d.feature.properties?.NAME);
 
     sel.exit().transition().duration(250).attr("r", 0).remove();
 
@@ -144,22 +167,17 @@
       .attr("cx", d => d.x)
       .attr("cy", d => d.y)
       .attr("r", 0)
-      .style("fill", metricColors.population)
       .on("mouseover", (event, d) => {
         tooltip.style("display", "block")
           .html(
-            `<strong>${d.feature.properties.NAME || "Unnamed"}</strong><br/>` +
+            `<strong>${d.feature.properties[colorMetric] + '' + d.feature.properties[sizeMetric] + '' +  d.feature.properties.education  + '' +  d.feature.properties.affordability}</strong><br/>` +
             `Pop: ${d.population?.toLocaleString() || "N/A"}`
           );
       })
       .on("mousemove", (event) => {
-        tooltip
-          .style("left", (event.pageX + 12) + "px")
-          .style("top", (event.pageY + 12) + "px");
+        tooltip.style("left", (event.pageX + 12) + "px").style("top", (event.pageY + 12) + "px");
       })
-      .on("mouseout", () => {
-        tooltip.style("display", "none");
-      })
+      .on("mouseout", () => tooltip.style("display", "none"))
       .on("click", (event, d) => {
         event.stopPropagation();
         dotsG.selectAll("circle").classed("selected", false);
@@ -167,27 +185,27 @@
         showTabContent("overview", d);
       });
 
-      enter.merge(sel)
-        .attr("cx", d => d.x)
-        .attr("cy", d => d.y)
-        .transition().duration(350)
-        .attr("r", d => Math.max(3, rScale(d.population)));
-    }
-
+    enter.merge(sel)
+      .transition().duration(300)
+      .attr("r", d => Math.max(2.5, rScaleLocal(d[sizeMetric])))
+      .style("fill", d => {
+        const v = +d[colorMetric];
+        return (isNaN(v) ? "#bbb" : colorScale(v));
+      });
+  } 
   // render Overview tab (bars + small raw numbers)
   function renderOverview(p) {
     sidebar.html("");
     const tenure = tenureSelect.node().value;
-    const m = normalizedMetrics(p, tenure, normalizationMaxs);
 
     sidebar.append("h2").text(p.feature.properties.NAME || "Unnamed");
     sidebar.append("h3").text("Population: " + (p.population ? p.population.toLocaleString() : "N/A"));
 
     const metricsToShow = [
-      { key: "carFreedom", label: "Car freedom (non-car commutes)", color: metricColors.carFreedom, val: m.carFreedom, type: "th percentile"},
-      { key: "education", label: "Education (Bachelor+ %)", color: metricColors.education, val: m.education, type: "%" },
-      { key: "affordability", label: tenure === "buy" ? "Affordability (mortgage inverted)" : "Affordability (rent inverted)", color: metricColors.affordability, val: m.affordability, type: "th percentile" },
-      { key: "opportunity", label: "Opportunity (1 - unemployment rate)", color: metricColors.opportunity, val: m.opportunity,  type: "th percentile"}
+      { key: "carFreedom", label: "Car freedom (non-car commutes)", color: metricColors.carFreedom, val: p.carFreedom, type: "th percentile"},
+      { key: "education", label: "Education (Bachelor+ %)", color: metricColors.education, val: p.education, type: "%" },
+      { key: "affordability", label: tenure === "buy" ? "Affordability (mortgage inverted)" : "Affordability (rent inverted)", color: metricColors.affordability, val: p.affordability, type: "th percentile" },
+      { key: "opportunity", label: "Opportunity (1 - unemployment rate)", color: metricColors.opportunity, val: p.opportunity,  type: "th percentile"}
     ];
 
     metricsToShow.forEach(mt => {
@@ -200,15 +218,6 @@
         .style("width", Math.round(mt.val * 100) + "%");
       cont.append("div").attr("class", "metric-value").text(Math.round(mt.val * 100) + mt.type);
     });
-
-    // raw numbers
-    // const raw = sidebar.append("div").style("margin-top","10px").style("font-size","12px").style("color","#444");
-    // raw.append("div").text("Transit: " + (p.transit || "N/A") + "%, Bike: " + (p.bike || "N/A") + "%, Walk: " + (p.walk || "N/A") + "%, WFH: " + (p.wfh || "N/A") + "%");
-    // raw.append("div").text("Car: " + (p.car || "N/A") + "%");
-    // raw.append("div").text("Bachelor+ %: " + (p.bachelors_pct ? p.bachelors_pct.toFixed(1) + "%" : "N/A"));
-    // raw.append("div").text("Median rent: $" + (p.median_rent ? p.median_rent.toLocaleString() : "N/A"));
-    // raw.append("div").text("Median mortgage burden: " + (p.median_mortgage_burden ? p.median_mortgage_burden + "%" : "N/A"));
-    // raw.append("div").text("Unemployment rate: " + (p.unemployment ? p.unemployment + "%" : "N/A"));
   }
 
   // Car freedom tab - breakdown per category
@@ -224,8 +233,7 @@
       { label: "WFH", value: +(p.wfh || 0), unit: "%" },
       { label: "Car", value: +(p.car || 0), unit: "%" }
     ];
-    const colors = [commuteColors.transit, commuteColors.bike, commuteColors.walk, commuteColors.wfh, commuteColors.car]
-    drawBarChart(chartHolder , cats, colors, {
+    drawBarChart(chartHolder , cats, metricColors.carFreedom, {
       title: "Commute Mode Distribution (%)",
       xLabel: "Commute Type",
     });
@@ -254,8 +262,8 @@
       { label: "Masters", value: masters, unit: "%" },
       { label: "Advanced", value: advanced, unit: "%" }
     ];
-    const colors = [educationColors.less_than_hs, educationColors.hs, educationColors.some_college, educationColors.bachelors, educationColors.masters, educationColors.advanced];
-    drawBarChart(chartHolder , cats, colors, {
+
+    drawBarChart(chartHolder , cats, metricColors.education, {
       title: "Education Distribution for Adults 25+ (%)",
       xLabel: "Educational Attainment Category",
     });
@@ -274,7 +282,7 @@
       const labels = ["<10","10-14.9","15-19.9","20-24.9","25-29.9","30-34.9","35-39.9","40-49.9", "50+"];
       const values = (p.mortgage_bins && p.mortgage_bins.length) ? p.mortgage_bins.map(v => total ? v / total * 100 : 0) : Array(labels.length).fill(0);
       const cats = labels.map((lab, i) => ({ label: lab, value: +(values[i] || 0), unit: "%" }));
-      drawBarChart(sidebar, cats, burdenColors, {
+      drawBarChart(chartHolder, cats, metricColors.affordability, {
         title: "Morgate Burden Distribution (%)",
         xLabel: "Gross morgate cost as % of Income",
       });
@@ -283,7 +291,7 @@
       const labels = ["<10","10-14.9","15-19.9","20-24.9","25-29.9","30-34.9","35-39.9","40-49.9", "50+"];
       const values = (p.rent_bins && p.rent_bins.length) ? p.rent_bins.map(v => total ? v / total * 100 : 0) : Array(labels.length).fill(0);
       const cats = labels.map((lab, i) => ({ label: lab, value: +(values[i] || 0), unit: "%" }));
-      drawBarChart(chartHolder, cats, burdenColors, {
+      drawBarChart(chartHolder, cats, metricColors.affordability, {
         title: "Rent Burden Distribution (%)",
         xLabel: "Gross Rent as % of Income",
       });

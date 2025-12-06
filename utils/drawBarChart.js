@@ -1,13 +1,14 @@
 export function drawBarChart(
   containerSel,
   items,
-  colors,
+  color,
   {
     title = "",
     xLabel = "",
     chartHeight = 350
   } = {}
 ) {
+  console.log("COLOR:", color)
   containerSel.html(""); // clear
 
   // auto-fit width to sidebar
@@ -61,7 +62,7 @@ export function drawBarChart(
     .attr("y", d => y(d.value))
     .attr("width", x.bandwidth())
     .attr("height", d => Math.max(1, h - y(d.value)))
-    .attr("fill", (d, i) => (colors && colors[i]) ? colors[i] : "#69b3a2");
+    .attr("fill", color);
 
   // Value labels above bars
   g.selectAll(".val")
