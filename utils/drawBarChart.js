@@ -8,8 +8,7 @@ export function drawBarChart(
     chartHeight = 350
   } = {}
 ) {
-  console.log("COLOR:", color)
-  containerSel.html(""); // clear
+  containerSel.html("");
 
   // auto-fit width to sidebar
   const containerNode = containerSel.node();
