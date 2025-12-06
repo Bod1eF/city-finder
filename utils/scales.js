@@ -13,11 +13,9 @@ export function buildRadiusScale(points, metric = 'population', rMin = 3, rMax =
   const vMin = d3.min(vals) ?? 0;
   const vMax = d3.max(vals) ?? 1;
 
-  // pick sqrt scale for perceptual area mapping (avoid huge sizes)
   if (vMin === vMax) {
     return () => (rMin + rMax) / 2;
   }
-  // if metric appears normalized 0..1, we still want a pleasing spread
   if (vMax <= 1 && vMin >= 0) {
     return d3.scaleSqrt().domain([0, 1]).range([rMin, rMax]);
   }

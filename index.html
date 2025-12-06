@@ -134,21 +134,17 @@
     const maxP = +maxPopInput.node().value || Infinity;
 
     // chosen encodings
-    const sizeMetric = sizeMetricSelect.node().value;  // e.g., "population" or "education"
-    const colorMetric = colorMetricSelect.node().value; // e.g., "carFreedom"
+    const sizeMetric = sizeMetricSelect.node().value;
+    const colorMetric = colorMetricSelect.node().value;
 
     // filter by population
     const shown = points.filter(d => d.population >= minP && d.population <= maxP);
 
-    // radius scale: you may want dynamic scale when sizeMetric != 'population'
-    // rebuild rScale using the current size metric to keep sizes meaningful
     const rScaleLocal = buildRadiusScale(shown, sizeMetric, 3, 22);
 
-    // color domain from shown values; default to [0,1] if normalized
     const colorVals = shown.map(d => +d[colorMetric]).filter(v => !isNaN(v));
     let cMin = d3.min(colorVals); let cMax = d3.max(colorVals);
     if (cMin == null || cMax == null) { cMin = 0; cMax = 1; }
-    // clamp for percent metrics in 0..1 (our normalized metrics are 0..1)
     if (cMax <= 1 && cMin >= 0) { cMin = 0; cMax = 1; }
 
     // base hue for metric
@@ -346,7 +342,6 @@
   // initial draw
   updateDots();
 
-  // expose update for debugging
   window._updateDots = updateDots;
 
 })();

@@ -5,29 +5,22 @@ export function parseFeatureProps(feature, normalizationMaxs = null, tenure = 'r
   const p = feature.properties || {};
   const n = v => toNum(v);
 
-  // --- Raw / friendly fields (use the exact names present in your JSON) ---
   const population = n(p.population);
   const transit = n(p.transit_percent);
-  const bike = n(p.bachelors ? 0 : p.bike_percent ?? p.bike); // try bike_percent; if no bike_percent but bachelors exists, fallback to p.bike (unlikely)
+  const bike = n(p.bachelors ? 0 : p.bike_percent ?? p.bike);
   const walk = n(p.walk_percent);
   const car = n(p.car_percent);
   const wfh = n(p.wfh_percent);
-
-  // Education: you provided bachelors_plus_percent as percent (0..100)
   const bachelors_pct = n(p.bachelors_plus_percent);
 
-  // Median values and burdens (exact names from your sample)
   const median_rent = n(p.median_rent);
-  const median_rent_burden = n(p.median_rent_burden); // percent of renters at some threshold (if present)
+  const median_rent_burden = n(p.median_rent_burden);
   const median_mortgage_burden = n(p.median_mortgage_burden);
 
-  // Labor / opportunity
   const labor_force_total = n(p.labor_force_total);
   const total_unemployed = n(p.total_unemployed);
-  // If you prefer unemployment rate rather than counts, compute:
   const unemployment = (labor_force_total > 0) ? (total_unemployed / labor_force_total * 100) : n(p.unemployment_rate ?? p.unemployed_rate);
 
-  // Education breakdown (use the friendly names present in your JSON snippet)
   const edu_total = toNum(p.education_total);
   const edu_no_school = toNum(p.no_schooling);
   const edu_12_no = toNum(p.grade_12_no_diploma);
@@ -41,7 +34,6 @@ export function parseFeatureProps(feature, normalizationMaxs = null, tenure = 'r
   const edu_prof = toNum(p.professional_degreeE);
   const edu_doc = toNum(p.doctorate_degree);
 
-  // Mortgage bins (exact names you provided)
   const mortgage_less_10 = n(p.mortgage_less_10);
   const mortgage_10_15 = n(p.mortgage_10_15);
   const mortgage_15_20 = n(p.mortgage_15_20);
@@ -58,10 +50,8 @@ export function parseFeatureProps(feature, normalizationMaxs = null, tenure = 'r
     mortgage_35_40, mortgage_40_50, mortgage_over_50
   ];
 
-  // mortgage_total may not exist explicitly; compute as sum of bins if necessary
   const mortgage_total = n(p.mortgage_total) || mortgage_bins.reduce((s, x) => s + x, 0);
 
-  // Rent bins: your snippet didn't show named rent bin fields; if they exist use them, otherwise leave empty
   const rent_bins = Array.isArray(p.rent_bins) ? p.rent_bins.map(x => n(x)) : ([
     n(p.rent_burden_less_10),
     n(p.rent_burden_less_15),
@@ -76,13 +66,11 @@ export function parseFeatureProps(feature, normalizationMaxs = null, tenure = 'r
 
   const rent_total = n(p.rent_total) || rent_bins.reduce((s, x) => s + x, 0);
 
-  // --- Raw composite values (using percents for commute modes) ---
   const carFreedom_raw = transit + bike + walk + wfh; // in percent points (0..100)
   const education_raw = bachelors_pct; // percent (0..100)
   const affordability_raw = (tenure === 'buy') ? median_mortgage_burden : median_rent; // either % (mortgage burden) or $ (rent)
   const opportunity_raw = unemployment; // percent
 
-  // --- Normalization extents (use provided normalizationMaxs or defaults) ---
   const nm = normalizationMaxs || {
     maxCarFreedom: 100,
     maxEducation: 100,
@@ -97,13 +85,11 @@ export function parseFeatureProps(feature, normalizationMaxs = null, tenure = 'r
   const mortgageExtent = nm.mortgageExtent ?? [0, mortgage_total || 1];
   const unemploymentExtent = nm.unemploymentExtent ?? [0, 30];
 
-  // --- Normalizations (clamped 0..1) ---
   const clamp01 = v => Math.max(0, Math.min(1, (v === undefined || v === null || Number.isNaN(v)) ? 0 : v));
 
   const carFreedom = clamp01(carFreedom_raw / (maxCarFreedom || 1));
   const education = clamp01(education_raw / (maxEducation || 1));
 
-  // Affordability: higher == more affordable. For rent we invert dollar amounts; for mortgage we invert percent burden.
   let affRaw = affordability_raw;
   let minA, maxA;
   if (tenure === 'buy') {
@@ -115,12 +101,10 @@ export function parseFeatureProps(feature, normalizationMaxs = null, tenure = 'r
   let affordability = 1 - ((affRaw - minA) / (maxA - minA));
   affordability = clamp01(affordability);
 
-  // Opportunity: lower unemployment is better
   const minU = unemploymentExtent[0]; const maxU = unemploymentExtent[1];
   let opportunity = 1 - ((opportunity_raw - minU) / (maxU - minU));
   opportunity = clamp01(opportunity);
 
-  // Build and return the parsed object with raw + normalized fields (exact names)
   return {
     feature,
     population,
