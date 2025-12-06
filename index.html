@@ -67,6 +67,7 @@
 
 <script type="module">
   import { computeNormalizationMaxsFromFeatures } from './utils/computeNormalizationMaxsFromFeatures.js';
+  import { normalizedMetrics } from './utils/normalizedmetrics.js';
   import { safePixelCentroid } from './utils/safePixelCentroid.js';
   import { parseFeatureProps } from './utils/parseFeatureProps.js';
   import { drawBarChart } from './utils/drawBarChart.js';
@@ -129,36 +130,34 @@
     return parsed;
   }).filter(Boolean);
 
-  const globalNorms = computeNormalizationMaxs(points);
   function updateDots() {
     const minP = +minPopInput.node().value || 0;
     const maxP = +maxPopInput.node().value || Infinity;
 
     // chosen encodings
     const sizeMetric = sizeMetricSelect.node().value;  // e.g., "population" or "education"
+    const colorMetric = colorMetricSelect.node().value; // e.g., "carFreedom"
 
     // filter by population
     const shown = points.filter(d => d.population >= minP && d.population <= maxP);
 
-    const radiusScale = buildRadiusScale(globalNorms, sizeMetric, 3, 20);
-    // Build domain: always two numbers [min, max]
-    let colorDomain;
+    // radius scale: you may want dynamic scale when sizeMetric != 'population'
+    // rebuild rScale using the current size metric to keep sizes meaningful
+    const rScaleLocal = buildRadiusScale(shown, sizeMetric, 3, 22);
 
-    // compute local extent
-    const localExtent = d3.extent(shown, d => +d[colorMetric]);
+    // color domain from shown values; default to [0,1] if normalized
+    const colorVals = shown.map(d => +d[colorMetric]).filter(v => !isNaN(v));
+    let cMin = d3.min(colorVals); let cMax = d3.max(colorVals);
+    if (cMin == null || cMax == null) { cMin = 0; cMax = 1; }
+    // clamp for percent metrics in 0..1 (our normalized metrics are 0..1)
+    if (cMax <= 1 && cMin >= 0) { cMin = 0; cMax = 1; }
 
-    if (localExtent[0] != null && !isNaN(localExtent[0])) {
-      colorDomain = localExtent;
-    } else {
-      // sensible fallbacks based on metric type
-      if (colorMetric === "carFreedom") colorDomain = [0, globalNorms.maxCarFreedom];
-      else if (colorMetric === "education") colorDomain = [0, globalNorms.maxEducation];
-      else if (colorMetric === "affordability") colorDomain = globalNorms.rentExtent;
-      else if (colorMetric === "opportunity") colorDomain = globalNorms.unemploymentExtent;
-      else colorDomain = [0, 1]; // safe fallback
-    }
+    // base hue for metric
+    const baseColor = metricColors[colorMetric] ?? "#777";
 
-    const colorScale = makeMonoColorScale(metricColors[colorMetric], colorDomain);  
+    // quantitative mono color scale
+    const colorScale = makeMonoColorScale(baseColor, [cMin, cMax]);
+
     // join
     const sel = dotsG.selectAll("circle.cbsa-dot")
       .data(shown, d => d.feature.properties?.CBSAFP || d.feature.properties?.GEOID || d.feature.properties?.NAME);
@@ -190,7 +189,7 @@
 
     enter.merge(sel)
       .transition().duration(300)
-      .attr("r", d => Math.max(2.5, radiusScale(d[sizeMetric])))
+      .attr("r", d => Math.max(2.5, rScaleLocal(d[sizeMetric])))
       .style("fill", d => {
         const v = +d[colorMetric];
         return (isNaN(v) ? "#bbb" : colorScale(v));
