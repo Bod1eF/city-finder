@@ -9,7 +9,6 @@ export function drawBarChart(
   } = {}
 ) {
   containerSel.html("");
-
   // auto-fit width to sidebar
   const containerNode = containerSel.node();
   const chartWidth = containerNode.getBoundingClientRect().width - 4;

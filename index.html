@@ -6,43 +6,45 @@
 <link rel="stylesheet" type="text/css" href="css/map.css" />
 </head>
 <body>
+  <div class="title-container">
+    <h2 id="head">City Finder - A dynamic visualization designed to help you find your ideal city</h2>
+  </div>
+  <div class="controls">
+    <label for="minPop">Min population</label>
+    <input id="minPop" type="number" value="50000" min="0" />
 
-<div class="controls">
-  <label for="minPop">Min population</label>
-  <input id="minPop" type="number" value="50000" min="0" />
+    <label for="maxPop">Max population</label>
+    <input id="maxPop" type="number" value="10000000" min="0" />
+    
+    <button id="applyFilter" style="padding:6px 10px; border-radius:4px;">Apply filter</button>
+  </div> 
+  <div class="controls">
+    <label for="tenure">Looking to:</label>
+    <select id="tenure">
+      <option value="rent">Rent</option>
+      <option value="buy">Buy (mortgage)</option>
+    </select>
 
-  <label for="maxPop">Max population</label>
-  <input id="maxPop" type="number" value="10000000" min="0" />
-  
-  <button id="applyFilter" style="padding:6px 10px; border-radius:4px;">Apply filter</button>
-</div> 
-<div class="controls">
-  <label for="tenure">Looking to:</label>
-  <select id="tenure">
-    <option value="rent">Rent</option>
-    <option value="buy">Buy (mortgage)</option>
-  </select>
+    <label for="sizeMetric">Size Encoding</label>
+    <select id="sizeMetric">
+      <option value="population" selected>Population</option>
+      <option value="carFreedom">Car Freedom</option>
+      <option value="education">Education</option>
+      <option value="affordability">Affordability</option>
+      <option value="opportunity">Opportunity</option>
+    </select>
 
-  <label for="sizeMetric">Size Encoding</label>
-  <select id="sizeMetric">
-    <option value="population" selected>Population</option>
-    <option value="carFreedom">Car Freedom</option>
-    <option value="education">Education</option>
-    <option value="affordability">Affordability</option>
-    <option value="opportunity">Opportunity</option>
-  </select>
+    <label for="colorMetric">Color Encoding</label>
+    <select id="colorMetric">
+      <option value="population">Population</option>
+      <option value="carFreedom" selected>Car Freedom</option>
+      <option value="education">Education</option>
+      <option value="affordability">Affordability</option>
+      <option value="opportunity">Opportunity</option>
+    </select>
+  </div>
 
-  <label for="colorMetric">Color Encoding</label>
-  <select id="colorMetric">
-    <option value="population">Population</option>
-    <option value="carFreedom" selected>Car Freedom</option>
-    <option value="education">Education</option>
-    <option value="affordability">Affordability</option>
-    <option value="opportunity">Opportunity</option>
-  </select>
-</div>
-
-<div id="container">
+  <div id="container">
   <div id="left">
     <div id="vis"></div>
   </div>
@@ -59,7 +61,7 @@
     </div>
   </div>
 </div>
-
+<footer><p>Data sourced from the <a href="https://www.census.gov/programs-surveys/acs/news/data-releases.2023.html">2023 American Community Survey</a></p></footer>
 <script src="https://d3js.org/d3.v7.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
 
@@ -170,7 +172,7 @@
       .on("mouseover", (event, d) => {
         tooltip.style("display", "block")
           .html(
-            `<strong>${d.feature.properties[colorMetric] + '' + d.feature.properties[sizeMetric] + '' +  d.feature.properties.education  + '' +  d.feature.properties.affordability}</strong><br/>` +
+            `<strong>${d.feature.properties.NAME}</strong><br/>` +
             `Pop: ${d.population?.toLocaleString() || "N/A"}`
           );
       })
